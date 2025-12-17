@@ -232,6 +232,13 @@ run_loo.py does not accept --ckpt_path. It retrains from scratch for each remova
 
 The base run is recorded as {"id": -1, "loss": ...}.
 
+## results
+
+
+![image]()
+
+
+
 ## Notes on sign convention (Helpful vs Harmful)
 
 This code follows the common convention:
