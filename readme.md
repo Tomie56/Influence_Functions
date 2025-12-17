@@ -234,8 +234,9 @@ The base run is recorded as {"id": -1, "loss": ...}.
 
 ## results
 
-
-![image]()
+![image](https://github.com/Tomie56/influence_function/blob/master/figures/test_data.png)
+![image](https://github.com/Tomie56/influence_function/blob/master/figures/helpful_example.png)
+![image](https://github.com/Tomie56/influence_function/blob/master/figures/harmful_example.png)
 
 
 
