@@ -251,30 +251,15 @@ Always validate the sign convention on your setup by comparing IF predictions ag
 
 ## Environment
 
-Typical requirements:
-
-Python 3.8+
-
-PyTorch
-
-NumPy
-
-tqdm
-
-matplotlib
-
-scipy (for Pearson correlation in visualization)
-
-Install (example):
+Install:
 
 ```bash
 
-pip install torch numpy tqdm matplotlib scipy
+pip install torch==2.4.1 numpy tqdm matplotlib scipy
 ```
 
 ## Acknowledgements
 
-Core IF idea and experimental framing: https://github.com/kohpangwei/influence-release.git
+Core IF and LOO idea: https://github.com/kohpangwei/influence-release.git
 
 PyTorch IF implementation reference: https://github.com/nimarb/pytorch_influence_functions.git
-> （注：文档部分内容可能由 AI 生成）
