@@ -244,25 +244,11 @@ Always validate the sign convention on your setup by comparing IF predictions ag
 
 ## Environment
 
-Typical requirements:
-
-Python 3.8+
-
-PyTorch
-
-NumPy
-
-tqdm
-
-matplotlib
-
-scipy (for Pearson correlation in visualization)
-
-Install (example):
+Install:
 
 ```bash
 
-pip install torch numpy tqdm matplotlib scipy
+pip install torch==2.4.1 numpy tqdm matplotlib scipy
 ```
 
 ## Acknowledgements
