@@ -267,7 +267,6 @@ pip install torch numpy tqdm matplotlib scipy
 
 ## Acknowledgements
 
-Core IF idea and experimental framing: https://github.com/kohpangwei/influence-release.git
+Core IF and LOO idea: https://github.com/kohpangwei/influence-release.git
 
 PyTorch IF implementation reference: https://github.com/nimarb/pytorch_influence_functions.git
-> （注：文档部分内容可能由 AI 生成）
