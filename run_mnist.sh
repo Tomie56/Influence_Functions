@@ -5,7 +5,7 @@ set -e  # Exit on any error
 # Basic settings
 EXPERIMENT_DIR="./mnist_experiment"  # Root directory for all outputs
 GPU_ID=0                              # GPU id (set to -1 for CPU)
-TEST_ID=5                             # Target test sample ID for IF/LOO
+TEST_ID=20                             # Target test sample ID for IF/LOO
 SEED=42                               # Random seed
 
 # Data settings
@@ -17,24 +17,24 @@ TEST_LIMIT=10000                      # Limit test data size (set to -1 for full
 BASE_OPTIMIZER="lbfgs"                # Optimizer for base model training (lbfgs/sgd/adamw)
 BASE_EPOCHS=1                         # Epochs for base model training
 BASE_BATCH_SIZE=55000                 # Batch size for base model training, LBFGS uses full batch
-BASE_LR=0.01                          # Learning rate for base model training
+BASE_LR=1                          # Learning rate for base model training
 
 # IF settings
 RECURSION_DEPTH=5500                  # Recursion depth for s_test calculation
 R_AVERAGING=10                        # Number of averaging iterations for IF
 DAMP=0.01                           # Dampening factor for IF
-SCALE=60.0                            # Scaling factor for IF
-TOPK=200                               # Top-K influential training samples to select
+SCALE=75.0                            # Scaling factor for IF
+TOPK=100                               # Top-K influential training samples to select
 
 # LOO settings
 LOO_OPTIMIZER="lbfgs"                 # Optimizer for LOO retraining (lbfgs/sgd/adamw)
-LOO_LR=1.0                            # Learning rate for LOO retraining
+LOO_LR=1                           # Learning rate for LOO retraining
 LOO_EPOCHS=1                          # Epochs for LOO retraining
 LOO_BATCH_SIZE=55000                  # Batch size for LOO retraining, LBFGS uses full batch
 
 # Visualization settings
-TOPN_DIST=200                          # Top N helpful/harmful samples for distribution plot
-TOPK_CORR=200                          # Top K samples for IF-LOO correlation plot
+TOPN_DIST=100                          # Top N helpful/harmful samples for distribution plot
+TOPK_CORR=100                          # Top K samples for IF-LOO correlation plot
 MODEL_TYPE="MNIST_IF"                 # Model type label for visualization
 
 # -------------------------- Directory Setup --------------------------
@@ -59,7 +59,8 @@ echo "======================================"
 # -------------------------- Step 1: Train Base Model (Mandatory, for run_if.py to load weights) --------------------------
 echo -e "\n[Step 1/4] Training MNIST Base Model"
 python ./scripts/train_base.py \
-    --mnist_root "${MNIST_ROOT}" \
+    --experiment mnist \
+    --data_root "${MNIST_ROOT}" \
     --train_limit "${TRAIN_LIMIT}" \
     --epochs "${BASE_EPOCHS}" \
     --batch_size "${BASE_BATCH_SIZE}" \
@@ -75,9 +76,9 @@ echo -e "\n[Step 2/4] Calculating Influence Functions for Test ID ${TEST_ID}"
 python ./scripts/run_if.py \
     --experiment mnist \
     --ckpt_path "${BASE_MODEL_DIR}/base_model.pth" \
-    --mnist_root "${MNIST_ROOT}" \
-    --mnist_train_limit "${TRAIN_LIMIT}" \
-    --mnist_test_limit "${TEST_LIMIT}" \
+    --data_root "${MNIST_ROOT}" \
+    --train_limit "${TRAIN_LIMIT}" \
+    --test_limit "${TEST_LIMIT}" \
     --test_id "${TEST_ID}" \
     --recursion_depth "${RECURSION_DEPTH}" \
     --r_averaging "${R_AVERAGING}" \
@@ -95,9 +96,9 @@ python ./scripts/run_loo.py \
     --experiment mnist \
     --topk_ids_txt "${IF_SAVE_DIR}/topk_ids_test_${TEST_ID}.txt" \
     --test_id "${TEST_ID}" \
-    --mnist_root "${MNIST_ROOT}" \
-    --mnist_train_limit "${TRAIN_LIMIT}" \
-    --mnist_test_limit "${TEST_LIMIT}" \
+    --data_root "${MNIST_ROOT}" \
+    --train_limit "${TRAIN_LIMIT}" \
+    --test_limit "${TEST_LIMIT}" \
     --optimizer "${LOO_OPTIMIZER}" \
     --lr "${LOO_LR}" \
     --epochs "${LOO_EPOCHS}" \

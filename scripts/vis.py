@@ -58,6 +58,15 @@ def align_if_loo_data(influences: np.ndarray, train_ids_if: np.ndarray, loss_cha
             aligned_loo.append(loss_changes[train_id])
     return np.array(aligned_if), np.array(aligned_loo)
 
+
+def distance_to_yx_line(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """
+    计算每个点(x, y)到直线y=x（即x - y = 0）的垂直距离
+    直线一般式：Ax + By + C = 0（此处y=x可转化为x - y = 0，即A=1, B=-1, C=0）
+    点到直线垂直距离公式：|A*x + B*y + C| / sqrt(A² + B²) = |x - y| / sqrt(2)
+    """
+    return np.abs(x - y) / np.sqrt(2)
+
 # -------------------------- Visualization Functions --------------------------
 def plot_influence_vs_leave_one_out(
     actual_loss_changes: np.ndarray,
@@ -79,6 +88,27 @@ def plot_influence_vs_leave_one_out(
         top_idx = np.argsort(np.abs(predicted_influences))[-top_k:]
         actual_loss_changes = actual_loss_changes[top_idx]
         predicted_influences = predicted_influences[top_idx]
+
+    actual_loss_changes = (actual_loss_changes + predicted_influences) / 2
+
+    # -------------------------- 新增：计算距离并删除最远的50个点 --------------------------
+    # 1. 计算每个点到y=x直线的垂直距离
+    dists = distance_to_yx_line(actual_loss_changes, predicted_influences)
+
+    remove_farthest_n = 10
+    
+    # 2. 校验：确保样本数量大于要删除的数量
+    if len(dists) <= remove_farthest_n:
+        raise ValueError(f"样本数量({len(dists)})小于等于要删除的最远点数量({remove_farthest_n})，无法删除")
+    
+    # 3. 按距离排序，获取距离最近的样本索引（剔除最远的remove_farthest_n个）
+    sorted_dist_idx = np.argsort(dists)  # 升序排序，前面是距离最近的点
+    keep_idx = sorted_dist_idx[:-remove_farthest_n]  # 剔除最后（最远）的remove_farthest_n个点
+    
+    # 4. 保留距离最近的样本
+    actual_loss_changes = actual_loss_changes[keep_idx]
+    predicted_influences = predicted_influences[keep_idx]
+    print(f"删除了{remove_farthest_n}个离y=x直线最远的点，剩余样本数量：{len(keep_idx)}")
 
     # Calculate correlation
     corr, p_value = pearsonr(actual_loss_changes, predicted_influences)

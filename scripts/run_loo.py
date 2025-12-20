@@ -188,9 +188,9 @@ def parse_args():
     parser.add_argument("--topk_ids_txt", type=str, required=True, help="Path to Top-K influential train IDs txt file")
     parser.add_argument("--test_id", type=int, required=True, help="Target test sample ID for loss evaluation")
     # Data paths
-    parser.add_argument("--mnist_root", type=str, default="./mnist", help="MNIST dataset root directory")
-    parser.add_argument("--mnist_train_limit", type=int, default=55000, help="Limit size of MNIST training dataset")
-    parser.add_argument("--mnist_test_limit", type=int, default=10000, help="Limit size of MNIST test dataset")
+    parser.add_argument("--data_root", type=str, default="./mnist", help="dataset root directory")
+    parser.add_argument("--train_limit", type=int, default=55000, help="Limit size of training dataset")
+    parser.add_argument("--test_limit", type=int, default=10000, help="Limit size of test dataset")
     parser.add_argument("--train_jsonl", type=str, default=None, help="Path to multimodal train jsonl file")
     parser.add_argument("--test_jsonl", type=str, default=None, help="Path to multimodal test jsonl file")
     parser.add_argument("--image_root", type=str, default="./", help="Root directory for multimodal images")
@@ -219,15 +219,15 @@ def build_base_datasets(args, tokenizer=None):
     """Build base training and test datasets (without sample exclusion)"""
     if args.experiment == "mnist":
         _, train_dataset = build_dataloader_mnist(
-            data_root=args.mnist_root,
+            data_root=args.data_root,
             train=True,
-            limit_size=args.mnist_train_limit,
+            limit_size=args.train_limit,
             return_dataset=True
         )
         _, test_dataset = build_dataloader_mnist(
-            data_root=args.mnist_root,
+            data_root=args.data_root,
             train=False,
-            limit_size=args.mnist_test_limit,
+            limit_size=args.test_limit,
             return_dataset=True
         )
     else:

@@ -14,9 +14,9 @@ def parse_args():
     parser.add_argument("--experiment", choices=["mnist", "multimodal"], required=True)
     parser.add_argument("--ckpt_path", type=str, required=True)
     # Data config
-    parser.add_argument("--mnist_root", type=str, default="./mnist")
-    parser.add_argument("--mnist_train_limit", type=int, default=55000)
-    parser.add_argument("--mnist_test_limit", type=int, default=10000)
+    parser.add_argument("--data_root", type=str, default="./mnist")
+    parser.add_argument("--train_limit", type=int, default=55000)
+    parser.add_argument("--test_limit", type=int, default=10000)
     parser.add_argument("--train_jsonl", type=str, default=None)
     parser.add_argument("--test_jsonl", type=str, default=None)
     parser.add_argument("--image_root", type=str, default="./")
@@ -101,21 +101,21 @@ def build_data_loaders(args, tokenizer, device):
     # Build train and test dataloaders
     if args.experiment == "mnist":
         train_loader, _ = build_dataloader_mnist(
-            data_root=args.mnist_root,
+            data_root=args.data_root,
             train=True,
             batch_size=args.batch_size,
             shuffle=False,
             num_workers=args.num_workers,
-            limit_size=args.mnist_train_limit,
+            limit_size=args.train_limit,
             return_dataset=False
         )
         test_loader, test_dataset = build_dataloader_mnist(
-            data_root=args.mnist_root,
+            data_root=args.data_root,
             train=False,
             batch_size=1,
             shuffle=False,
             num_workers=args.num_workers,
-            limit_size=args.mnist_test_limit,
+            limit_size=args.test_limit,
             return_dataset=True
         )
     else:
