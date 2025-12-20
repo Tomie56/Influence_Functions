@@ -29,7 +29,7 @@ Given a trained model and a chosen **test sample**, we perform the following ste
 ## Results
 
 <center class="half">
-    <img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_5.png" width="200"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_0.png" width="200"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_1.png" width="200"/>
+    <img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_5.png" width="400"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_0.png" width="400"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_1.png" width="400"/>
 </center>
 
 ## Repository Layout
