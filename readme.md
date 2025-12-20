@@ -4,7 +4,7 @@ This repository provides a lightweight, self-contained implementation of Influen
 
 - **MNIST**: Multi-class logistic regression (paper-style sanity check).
 
-- **Multimodal (jsonl)**: A lightweight multimodal language model with image tokens.
+- **Multimodal (jsonl)**: A lightweight multimodal language model with image tokens. (incoming)
 
 Development is based on:
 
@@ -24,7 +24,9 @@ Given a trained model and a chosen **test sample**, this repo performs the follo
 
 3. **Leave-One-Out Retraining (LOO)**: Retrain the model with one training point removed and record the test loss.
 
-4. **Visualization**: Plot IF distributions and IF-vs-LOO correlation (Pearson correlation coefficient).
+4. **One-Step-Train Loss (OST)**: Train the model with one single step and record the loss changes.
+
+5. **Visualization**: Plot IF distributions and IF-vs-LOO correlation (Pearson correlation coefficient) and IF-vs-OST plot.
 
 ## Results
 
