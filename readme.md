@@ -69,6 +69,43 @@ In summary, influence scores computed via the IF implementation yield highly int
 - **Harmful Training Samples**:
 ![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/harmful_test_5.png)
 
+## One-step-train LOSS (OST) vs. Influence Functions (IF) Experiments
+Traditional Influence Functions (IF) are based on Leave-One-Out (LOO) cross-validation, which approximates model parameter changes after removing each training sample to evaluate its impact on target test sample predictions. The LOO-based approach is theoretically most accurate for capturing true sample influence, as it fully considers each sample’s holistic role in training.
+
+However, traditional IF involves complex calculations (e.g., Hessian matrix inversion), leading to high computational costs and limited applicability to large-scale datasets or real-time tasks. To address this, we proposed a simplified incremental approximation: the one_step_train_loss method. Specifically, we first calculate the base loss of the target test sample on the pre-trained model, then fine-tune the model with each training sample as a single batch (batch=1) for one step, compute the new loss of the test sample on the updated model, and define the influence score as data_influence = base_loss - new_loss.
+
+This simplified method sacrifices some precise interpretability—it cannot capture the cumulative impact of training samples during full training, only reflecting the marginal impact of one-step updates. Nevertheless, in practical tasks like data selection (e.g., selecting influential samples for retraining/pruning), we only care about the relative order of influence scores rather than absolute values. Thus, we conducted the one_step_train_loss experiment to verify if this method can maintain the relative order of sample influence, providing a low-cost alternative.
+
+### Key Experimental Observations
+
+#### 1. Performance Characteristics of the one_step_train loss (ost) Method in Data Selection
+
+The ost method exhibits significant advantages in selecting the most influential samples, while its advantages diminish when selecting samples with less obvious influence. Specifically, for top 100 and top 500 influential samples, the ost method achieves a much higher selection accuracy compared to the random selection baseline (baseline accuracy < 1%). However, when selecting top 25000 samples, the advantage of the ost method becomes insignificant, as the baseline accuracy for this scenario is approximately 50%. The underlying reason is likely that samples with less obvious influence have ambiguous decision boundaries. For such samples, the loss change-based ost method is less accurate in capturing their true influence, leading to reduced differentiation from random selection.
+
+- **Top 100**:
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/ost_vs_if_top100.png)
+- **Top 500**:
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/ost_vs_if_top500.png)
+- **Top 25000**:
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/ost_vs_if_top25000.png)
+
+#### 2. Characteristics of Helpful and Harmful Data on MNIST Dataset
+
+Consistent with the observations from traditional IF experiments, the helpful and harmful training samples identified by the ost method on the MNIST dataset also align with intuitive expectations: 
+
+- **Most Helpful Data**: Samples share the same label as the target test sample. Consistent label information provides robust support for the model’s correct classification of the test case.
+
+- **Most Harmful Data**: Samples exhibit high input similarity to the target test sample (i.e., visually similar images) but have different labels. Conflicting label information confuses the model’s decision boundary for the test case, thereby adversely affecting prediction performance.
+
+
+### Test Case Visualizations
+
+#### Test id 0
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/ost_test_0.png)
+- **Helpful Training Samples**:
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/ost_helpful_test_0.png)
+- **Harmful Training Samples**:
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/ost_harmful_test_0.png)
 
 
 ## Repository Layout
@@ -78,7 +115,8 @@ In summary, influence scores computed via the IF implementation yield highly int
 .
 ├── models/                          # Store base model weight checkpoints
 ├── eval/  
-│   └── vis.ipynb                    # ipynb for  
+│   ├── vis.ipynb                    # ipynb for eval IF
+│   └── vis_ost.ipynb                # ipynb for eval OST
 ├── outputs/
 │   ├── mnist/                       # MNIST experiment outputs
 │   │   ├── tmp_if/                  # Temporary IF computation files (internal use)
@@ -259,19 +297,6 @@ python3 -u scripts/run_if.py \
 
 ```
 
-#### Run IF (All Tests)
-
-```bash
-
-python3 -u scripts/run_if.py \
-  --experiment mnist \
-  --ckpt_path ./models/mnist_base.pth \
-  --all_test_ids 1 \
-  --save_all_dir ./outputs/mnist/all_tests \
-  --resume_all_test 1
-
-```
-
 #### Run LOO
 
 ```bash
@@ -286,3 +311,9 @@ python3 -u scripts/run_loo.py \
   --epochs 1
 
 ```
+
+#### Run OST
+
+```bash
+
+python3 -u scripts/one_step_train.py 
