@@ -28,9 +28,58 @@ Given a trained model and a chosen **test sample**, we perform the following ste
 
 ## Results
 
+## LOO vs. Influence Functions (IF) Experiments
+
+Experiments replicate the core content from the paper *Understanding Black-box Predictions via Influence Functions* (corresponding to Figure 2 in the original work). Visualization results are presented below:
 <center class="half">
     <img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_5.png" width="500"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_0.png" width="500"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_1.png" width="500"/>
 </center>
+
+### Key Experimental Observations
+
+#### 1. Approximation Performance of IF
+
+Influence Functions (IF) achieve effective approximation of Leave-One-Out (LOO) cross-validation results overall. However, approximation accuracy deteriorates significantly for data points with influence scores close to 0. Such data points contribute minimally to model parameter updates, leading to larger discrepancies between IF approximations and true LOO outcomes.
+
+#### 2. Characteristics of Helpful and Harmful Data on MNIST Dataset
+
+Analysis of the most helpful and most harmful training samples identified by IF for specific test cases on the MNIST dataset reveals results consistent with intuitive expectations:
+
+- **Most Helpful Data**: Samples share the same label as the target test sample. Consistent label information provides robust support for the model’s correct classification of the test case, which aligns with both theoretical intuition and experimental evidence.
+
+- **Most Harmful Data**: Samples exhibit high input similarity to the target test sample (i.e., visually similar images) but have different labels. Conflicting label information confuses the model’s decision boundary for the test case, thereby adversely affecting prediction performance.
+
+In summary, influence scores computed via the IF implementation yield highly interpretable results, effectively capturing both qualitative and quantitative impacts of individual training samples on model predictions.
+
+---
+
+### Test Case Visualizations
+
+#### Test id 0
+
+- **Original Image**:
+<img src="![figurestest_0.png](https://github.com/Tomie56/Influence_Functions/blob/master/figures/test_0.png)" alt="Test id 0 original image"/
+
+- **Helpful Training Samples**:
+<img src="https:/github.com/Tomie56/Influence_Functions/blob/master/figureshelpful_test_0.png" alt="Helpful data for Test id 0"/
+
+- **Harmful Training Samples**:
+<img src="https:/github.com/Tomie56/Influence_Functions/blob/masterfigures/harmful_test_0.png" alt="Harmful data for Test id 0"/
+Test id 0:
+
+
+#### Test id 5
+
+- **Original Image**:
+<img src="![figurestest_5.png](https://github.com/Tomie56/Influence_Functions/blob/master/figures/test_0.png)" alt="Test id 5 original image"/
+
+- **Helpful Training Samples**:
+<img src="https:/github.com/Tomie56/Influence_Functions/blob/master/figureshelpful_test_5.png" alt="Helpful data for Test id 5"/
+
+- **Harmful Training Samples**:
+<img src="https:/github.com/Tomie56/Influence_Functions/blob/masterfigures/harmful_test_5.png" alt="Harmful data for Test id 5"/
+Test id 0:
+
 
 ## Repository Layout
 
