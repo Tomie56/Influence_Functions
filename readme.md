@@ -16,7 +16,7 @@ Influence Function computation is adapted from the PyTorch implementation ideas 
 
 ## What This Project Does
 
-Given a trained model and a chosen **test sample**, we perform the following steps:
+Given a trained model and a chosen **test sample**, this repo performs the following steps:
 
 1. **Influence Functions (IF)**: Approximate the effect of each training point on the test loss.
 
@@ -32,7 +32,7 @@ Given a trained model and a chosen **test sample**, we perform the following ste
 
 Experiments replicate the core content from the paper *Understanding Black-box Predictions via Influence Functions* (corresponding to Figure 2 in the original work). Visualization results are presented below:
 <center class="half">
-    <img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_5.png" width="500"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_0.png" width="500"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_1.png" width="500"/>
+    <img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_5.png" width="600"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_0.png" width="600"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_1.png" width="600"/>
 </center>
 
 ### Key Experimental Observations
@@ -56,8 +56,6 @@ In summary, influence scores computed via the IF implementation yield highly int
 ### Test Case Visualizations
 
 #### Test id 0
-
-- **Original Image**:
 ![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/test_0.png)
 - **Helpful Training Samples**:
 ![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/helpful_test_0.png)
@@ -65,8 +63,6 @@ In summary, influence scores computed via the IF implementation yield highly int
 ![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/harmful_test_0.png)
 
 #### Test id 5
-
-- **Original Image**:
 ![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/test_5.png)
 - **Helpful Training Samples**:
 ![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/helpful_test_5.png)
