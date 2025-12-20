@@ -58,27 +58,21 @@ In summary, influence scores computed via the IF implementation yield highly int
 #### Test id 0
 
 - **Original Image**:
-<img src="![figurestest_0.png](https://github.com/Tomie56/Influence_Functions/blob/master/figures/test_0.png)" alt="Test id 0 original image"/
-
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/test_0.png)
 - **Helpful Training Samples**:
-<img src="https:/github.com/Tomie56/Influence_Functions/blob/master/figureshelpful_test_0.png" alt="Helpful data for Test id 0"/
-
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/helpful_test_0.png)
 - **Harmful Training Samples**:
-<img src="https:/github.com/Tomie56/Influence_Functions/blob/masterfigures/harmful_test_0.png" alt="Harmful data for Test id 0"/
-Test id 0:
-
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/harmful_test_0.png)
 
 #### Test id 5
 
 - **Original Image**:
-<img src="![figurestest_5.png](https://github.com/Tomie56/Influence_Functions/blob/master/figures/test_0.png)" alt="Test id 5 original image"/
-
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/test_5.png)
 - **Helpful Training Samples**:
-<img src="https:/github.com/Tomie56/Influence_Functions/blob/master/figureshelpful_test_5.png" alt="Helpful data for Test id 5"/
-
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/helpful_test_5.png)
 - **Harmful Training Samples**:
-<img src="https:/github.com/Tomie56/Influence_Functions/blob/masterfigures/harmful_test_5.png" alt="Harmful data for Test id 5"/
-Test id 0:
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/harmful_test_5.png)
+
 
 
 ## Repository Layout
