@@ -26,12 +26,20 @@ Given a trained model and a chosen **test sample**, we perform the following ste
 
 4. **Visualization**: Plot IF distributions and IF-vs-LOO correlation (Pearson correlation coefficient).
 
+## Results
+
+<center class="half">
+    <img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_5.png" width="200"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_0.png" width="200"/><img src="https://github.com/Tomie56/Influence_Functions/blob/master/figures/influence_vs_loo_test_1.png" width="200"/>
+</center>
+
 ## Repository Layout
 
 ```plaintext
 
 .
 ├── models/                          # Store base model weight checkpoints
+├── eval/  
+│   └── vis.ipynb                    # ipynb for  
 ├── outputs/
 │   ├── mnist/                       # MNIST experiment outputs
 │   │   ├── tmp_if/                  # Temporary IF computation files (internal use)
