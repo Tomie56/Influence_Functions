@@ -1,358 +1,223 @@
-import os
-import json
 import argparse
-import logging
-from typing import Optional, List, Tuple
-
-import numpy as np
 import torch
-from torch.utils.data import DataLoader, Subset
+import numpy as np
+from pathlib import Path
+from tqdm import tqdm
+from model import build_model, SimpleTokenizer
+from data_utils_mnist import build_dataloader_mnist
+from data_utils import build_dataloader
+from influence_function import calc_influence_single
 
-from influence_function import calculate_influences
+def parse_args():
+    parser = argparse.ArgumentParser("Calculate Influence Functions (IF) for single/all test samples")
+    # Experiment config
+    parser.add_argument("--experiment", choices=["mnist", "multimodal"], required=True)
+    parser.add_argument("--ckpt_path", type=str, required=True)
+    # Data config
+    parser.add_argument("--mnist_root", type=str, default="./mnist")
+    parser.add_argument("--mnist_train_limit", type=int, default=55000)
+    parser.add_argument("--mnist_test_limit", type=int, default=10000)
+    parser.add_argument("--train_jsonl", type=str, default=None)
+    parser.add_argument("--test_jsonl", type=str, default=None)
+    parser.add_argument("--image_root", type=str, default="./")
+    parser.add_argument("--embed_dim", type=int, default=384)
+    parser.add_argument("--num_heads", type=int, default=6)
+    parser.add_argument("--num_layers", type=int, default=4)
+    parser.add_argument("--max_seq_len", type=int, default=768)
+    # IF config
+    parser.add_argument("--test_id", type=int, default=0)
+    parser.add_argument("--all_test_ids", action="store_true", help="Calculate IF for all test samples")
+    parser.add_argument("--recursion_depth", type=int, default=1000)
+    parser.add_argument("--r_averaging", type=int, default=10)
+    parser.add_argument("--damp", type=float, default=0.01)
+    parser.add_argument("--scale", type=float, default=25.0)
+    parser.add_argument("--loss_func", type=str, default="cross_entropy")
+    # Output config
+    parser.add_argument("--topk", type=int, default=500)
+    parser.add_argument("--save_dir", type=str, required=True)
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--num_workers", type=int, default=2)
+    parser.add_argument("--gpu", type=int, default=0, help="GPU id, -1 for CPU")
+    return parser.parse_args()
 
-
-def setup_logging():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s | %(message)s",
-    )
-
-
-def get_device() -> torch.device:
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def ensure_dir(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
-
-
-def write_topk_ids_txt(path: str, ids: List[int]) -> None:
-    ensure_dir(os.path.dirname(path) or ".")
-    with open(path, "w", encoding="utf-8") as f:
-        for i in ids:
-            f.write(f"{int(i)}\n")
-
-
-def save_scores_npy(path: str, scores: np.ndarray) -> None:
-    ensure_dir(os.path.dirname(path) or ".")
-    np.save(path, scores.astype(np.float32))
-
-
-def topk_by_abs(scores: np.ndarray, k: int) -> List[int]:
-    k = int(min(max(k, 0), scores.shape[0]))
-    if k == 0:
-        return []
-    idx = np.argsort(np.abs(scores))[-k:][::-1]
-    return idx.astype(int).tolist()
-
-
-def load_base_model_mnist(ckpt_path: str, device: torch.device):
-    from model import TorchLogisticRegression, MNIST_INPUT_DIM, MNIST_NUM_CLASSES
-    model = TorchLogisticRegression(
-        input_dim=MNIST_INPUT_DIM,
-        num_classes=MNIST_NUM_CLASSES,
-        loss_reduction="mean",
-        l2_reg=0.0,
-    ).to(device)
-    sd = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(sd)
-    model.eval()
-    return model
-
-
-def load_base_model_multimodal(ckpt_path: str, device: torch.device, args):
-    from model import MiniMultimodalModel, DEFAULT_VOCAB_SIZE, DEFAULT_IMAGE_EMBED_DIM
-    model = MiniMultimodalModel(
-        vocab_size=DEFAULT_VOCAB_SIZE,
-        embed_dim=args.embed_dim,
-        num_heads=args.num_heads,
-        num_layers=args.num_layers,
-        image_embed_dim=DEFAULT_IMAGE_EMBED_DIM,
-        image_size=args.image_size,
-        num_image_tokens_per_patch=args.num_image_tokens_per_patch,
-        max_seq_len=args.max_seq_len,
-    ).to(device)
-    sd = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(sd)
-    model.eval()
-    return model
-
-
-def build_loaders_mnist(args, device: torch.device):
-    from data_utils_mnist import build_dataloader_mnist
-
-    train_loader, train_dataset = build_dataloader_mnist(
-        data_root=args.mnist_root,
-        train=True,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        pin_memory=(device.type == "cuda"),
-        download=True,
-        normalize=True,
-        return_dataset=True,
-        limit_size=args.mnist_train_limit,
-    )
-
-    test_loader, test_dataset = build_dataloader_mnist(
-        data_root=args.mnist_root,
-        train=False,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=(device.type == "cuda"),
-        download=True,
-        normalize=True,
-        return_dataset=True,
-        limit_size=args.mnist_test_limit,
-    )
-
-    return train_loader, train_dataset, test_loader, test_dataset
-
-
-def build_loaders_multimodal(args, device: torch.device):
-    from model import SimpleTokenizer, DEFAULT_VOCAB_SIZE
-    from data_utils import build_dataloader
-
-    tokenizer = SimpleTokenizer(vocab_size=DEFAULT_VOCAB_SIZE, max_seq_len=args.max_seq_len)
-    dataset_kwargs = dict(
-        image_size=args.image_size,
-        dynamic_image_size=True,
-        min_dynamic_patch=1,
-        max_dynamic_patch=2,
-        use_thumbnail=True,
-        max_seq_len=args.max_seq_len,
-    )
-
-    train_loader, train_dataset = build_dataloader(
-        data_path=args.train_jsonl,
-        tokenizer=tokenizer,
-        image_root=args.image_root,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        return_dataset=True,
-        **dataset_kwargs,
-    )
-
-    test_loader, test_dataset = build_dataloader(
-        data_path=args.test_jsonl,
-        tokenizer=tokenizer,
-        image_root=args.image_root,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        return_dataset=True,
-        **dataset_kwargs,
-    )
-
-    return train_loader, train_dataset, test_loader, test_dataset
-
-
-def _one_sample_loader_from_dataset(
-    dataset,
-    sample_index: int,
-    device: torch.device,
-    num_workers: int,
-) -> DataLoader:
-    subset = Subset(dataset, [int(sample_index)])
-    return DataLoader(
-        subset,
-        batch_size=1,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
-
-
-def run_single_test(args, device: torch.device) -> None:
-    ensure_dir(args.tmp_dir)
-
+def load_model_and_tokenizer(args, device):
+    """Load model and tokenizer (handle both single state dict and wrapped dict with extra params)"""
+    # Load model based on experiment type
     if args.experiment == "mnist":
-        train_loader, _, _, test_dataset = build_loaders_mnist(args, device)
-        model = load_base_model_mnist(args.ckpt_path, device)
+        model = build_model(
+            experiment="mnist",
+            weight_decay=0.01, 
+            is_multi=True
+        ).to(device)
+        
+        # Load checkpoint and extract model state dict
+        ckpt = torch.load(args.ckpt_path, map_location=device)
+        if isinstance(ckpt, dict):
+            if "model_state_dict" in ckpt:
+                model_state_dict = ckpt["model_state_dict"]
+            else:
+                model_state_dict = ckpt
+        else:
+            raise TypeError(f"Invalid checkpoint type: {type(ckpt)}")
+        
+        # Load model state dict
+        model.load_state_dict(model_state_dict)
+        return model, None
     else:
-        train_loader, _, _, test_dataset = build_loaders_multimodal(args, device)
-        model = load_base_model_multimodal(args.ckpt_path, device, args)
+        # Load multimodal model and tokenizer
+        ckpt = torch.load(args.ckpt_path, map_location=device)
+        if "tokenizer_config" in ckpt:
+            tokenizer_config = ckpt["tokenizer_config"]
+        else:
+            tokenizer_config = {
+                "vocab_size": 10000,
+                "max_seq_len": args.max_seq_len
+            }
+        
+        tokenizer = SimpleTokenizer(
+            vocab_size=tokenizer_config["vocab_size"],
+            max_seq_len=tokenizer_config["max_seq_len"]
+        )
+        
+        # Extract multimodal model state dict
+        model = build_model(
+            experiment="multimodal",
+            vocab_size=tokenizer_config["vocab_size"],
+            embed_dim=args.embed_dim,
+            num_heads=args.num_heads,
+            num_layers=args.num_layers,
+            max_seq_len=tokenizer_config["max_seq_len"]
+        ).to(device)
+        
+        if "model_state_dict" in ckpt:
+            model.load_state_dict(ckpt["model_state_dict"])
+        else:
+            model.load_state_dict(ckpt)
+        
+        return model, tokenizer
 
-    if args.test_id < 0 or args.test_id >= len(test_dataset):
-        raise IndexError(f"--test_id out of range: {args.test_id} (test size={len(test_dataset)})")
-
-    test_loader = _one_sample_loader_from_dataset(
-        dataset=test_dataset,
-        sample_index=args.test_id,
-        device=device,
-        num_workers=args.num_workers,
-    )
-
-    influences, _, _ = calculate_influences(
-        model=model,
-        train_loader=train_loader,
-        test_loader=test_loader,
-        device=device,
-        num_test_samples=1,
-        recursion_depth=args.recursion_depth,
-        damp=args.damp,
-        scale=args.scale,
-        save_intermediate=False,
-        output_dir=args.tmp_dir,
-        top_k=0,
-    )
-
-    if len(influences) != 1:
-        raise RuntimeError(f"Expected exactly 1 test in influences, got keys={list(influences.keys())}")
-
-    test_key = next(iter(influences.keys()))
-    scores = np.asarray(influences[test_key], dtype=np.float32)
-
-    if args.save_scores_npy:
-        save_scores_npy(args.save_scores_npy, scores)
-        logging.info(f"Saved IF scores: {args.save_scores_npy} (len={len(scores)})")
-
-    if args.save_topk_ids_txt:
-        topk_ids = topk_by_abs(scores, args.topk)
-        write_topk_ids_txt(args.save_topk_ids_txt, topk_ids)
-        logging.info(f"Saved TopK ids: {args.save_topk_ids_txt} (k={len(topk_ids)})")
-
-    logging.info(f"[SINGLE] done. test_key={test_key} (requested test_id={args.test_id})")
-
-
-def run_all_tests(args, device: torch.device) -> None:
-    if not args.save_all_dir:
-        raise ValueError("--save_all_dir is required when --all_test_ids=1")
-
-    ensure_dir(args.save_all_dir)
-    ensure_dir(args.tmp_dir)
-
-    index_path = os.path.join(args.save_all_dir, "index.jsonl")
-
+def build_data_loaders(args, tokenizer, device):
+    """Build train and test dataloaders"""
+    # Build train and test dataloaders
     if args.experiment == "mnist":
-        train_loader, _, _, test_dataset = build_loaders_mnist(args, device)
-        model = load_base_model_mnist(args.ckpt_path, device)
+        train_loader, _ = build_dataloader_mnist(
+            data_root=args.mnist_root,
+            train=True,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            limit_size=args.mnist_train_limit,
+            return_dataset=False
+        )
+        test_loader, test_dataset = build_dataloader_mnist(
+            data_root=args.mnist_root,
+            train=False,
+            batch_size=1,
+            shuffle=False,
+            num_workers=args.num_workers,
+            limit_size=args.mnist_test_limit,
+            return_dataset=True
+        )
     else:
-        train_loader, _, _, test_dataset = build_loaders_multimodal(args, device)
-        model = load_base_model_multimodal(args.ckpt_path, device, args)
+        train_loader, _ = build_dataloader(
+            data_path=args.train_jsonl,
+            tokenizer=tokenizer,
+            image_root=args.image_root,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            return_dataset=False
+        )
+        test_loader, test_dataset = build_dataloader(
+            data_path=args.test_jsonl,
+            tokenizer=tokenizer,
+            image_root=args.image_root,
+            batch_size=1,
+            shuffle=False,
+            num_workers=args.num_workers,
+            return_dataset=True
+        )
+    return train_loader, test_loader, test_dataset
 
-    n = len(test_dataset)
-    limit = args.all_test_limit if args.all_test_limit and args.all_test_limit > 0 else n
-    limit = min(limit, n)
-    test_ids = list(range(limit))
+def get_train_ids(train_loader):
+    """Extract stable training sample IDs"""
+    train_ids = []
+    for batch in train_loader:
+        if isinstance(batch, dict):
+            train_ids.extend(batch["idx"].cpu().numpy().tolist())
+        else:
+            _, _, batch_ids = batch
+            train_ids.extend(batch_ids.cpu().numpy().tolist())
+    return np.array(train_ids)
 
-    logging.info(f"[ALL] test size={n}, will run={len(test_ids)}")
-    logging.info(f"[ALL] save_dir={args.save_all_dir} (one npy per test)")
+def save_if_results(args, test_id, influences, train_ids):
+    """Save IF results and top-K IDs"""
+    def convert_to_numpy(elem):
+        if isinstance(elem, torch.Tensor):
+            return elem.cpu().numpy()
+        return elem 
 
-    with open(index_path, "a", encoding="utf-8") as fidx:
-        for tid in test_ids:
-            out_path = os.path.join(args.save_all_dir, f"if_scores_test_{tid}.npy")
-            if args.resume_all_test and os.path.exists(out_path):
-                logging.info(f"[ALL] skip existing test_id={tid}")
-                continue
+    # Create save directory if not exists
+    save_dir = Path(args.save_dir)
+    save_dir.mkdir(exist_ok=True, parents=True)
+    tmp_dir = save_dir / "tmp_if"
+    tmp_dir.mkdir(exist_ok=True, parents=True)
 
-            test_loader = _one_sample_loader_from_dataset(
-                dataset=test_dataset,
-                sample_index=tid,
-                device=device,
-                num_workers=args.num_workers,
-            )
+    # Save IF scores and train IDs
+    influence_path = save_dir / f"influences_test_{test_id}.npz"
+    np.savez(
+        influence_path,
+        scores=np.array([convert_to_numpy(inf) for inf in influences]),
+        train_ids=train_ids
+    )
+    print(f"[Test {test_id}] IF results saved to {influence_path}")
 
-            influences, _, _ = calculate_influences(
-                model=model,
-                train_loader=train_loader,
-                test_loader=test_loader,
-                device=device,
-                num_test_samples=1,
-                recursion_depth=args.recursion_depth,
-                damp=args.damp,
-                scale=args.scale,
-                save_intermediate=False,
-                output_dir=args.tmp_dir,
-                top_k=0,
-            )
-
-            if len(influences) != 1:
-                raise RuntimeError(f"[ALL] Expected exactly 1 test for tid={tid}, got keys={list(influences.keys())}")
-
-            test_key = next(iter(influences.keys()))
-            scores = np.asarray(influences[test_key], dtype=np.float32)
-            save_scores_npy(out_path, scores)
-
-            fidx.write(json.dumps({"test_id": int(tid), "test_key": int(test_key), "path": out_path}, ensure_ascii=False) + "\n")
-            fidx.flush()
-
-            logging.info(f"[ALL] saved test_id={tid} (test_key={test_key}) -> {out_path}")
-
-
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser("Run Influence Functions and save per-test scores")
-
-    p.add_argument("--experiment", choices=["mnist", "multimodal"], required=True)
-    p.add_argument("--ckpt_path", type=str, required=True)
-
-    # IF params
-    p.add_argument("--recursion_depth", type=int, default=1000)
-    p.add_argument("--damp", type=float, default=0.01)
-    p.add_argument("--scale", type=float, default=25.0)
-
-    p.add_argument("--batch_size", type=int, default=32)
-    p.add_argument("--num_workers", type=int, default=2)
-
-    # Single-test mode
-    p.add_argument("--test_id", type=int, default=0)
-    p.add_argument("--topk", type=int, default=500)
-    p.add_argument("--save_scores_npy", type=str, default=None)
-    p.add_argument("--save_topk_ids_txt", type=str, default=None)
-
-    # All tests mode
-    p.add_argument("--all_test_ids", type=int, default=0)     # 1 = run all tests
-    p.add_argument("--save_all_dir", type=str, default=None)
-    p.add_argument("--all_test_limit", type=int, default=0)   # 0 = all
-    p.add_argument("--resume_all_test", type=int, default=1)  # 1 = skip existing
-
-    # MNIST
-    p.add_argument("--mnist_root", type=str, default="./mnist")
-    p.add_argument("--mnist_train_limit", type=int, default=55000)
-    p.add_argument("--mnist_test_limit", type=int, default=10000)
-
-    # Multimodal
-    p.add_argument("--train_jsonl", type=str, default=None)
-    p.add_argument("--test_jsonl", type=str, default=None)
-    p.add_argument("--image_root", type=str, default="./")
-
-    # Multimodal model shape (must match train_base.py)
-    p.add_argument("--image_size", type=int, default=224)
-    p.add_argument("--embed_dim", type=int, default=384)
-    p.add_argument("--num_heads", type=int, default=6)
-    p.add_argument("--num_layers", type=int, default=4)
-    p.add_argument("--num_image_tokens_per_patch", type=int, default=12)
-    p.add_argument("--max_seq_len", type=int, default=768)
-
-    # internal
-    p.add_argument("--tmp_dir", type=str, default="./outputs/_tmp_if")
-
-    return p
-
+    # Select and save Top-K train IDs (sorted by absolute influence)
+    abs_influences = np.abs([convert_to_numpy(inf) for inf in influences])
+    topk_indices = np.argsort(abs_influences)[-args.topk:]
+    topk_train_ids = train_ids[topk_indices]
+    
+    topk_path = save_dir / f"topk_ids_test_{test_id}.txt"
+    with open(topk_path, "w") as f:
+        for tid in topk_train_ids:
+            f.write(f"{tid}\n")
+    print(f"[Test {test_id}] Top-{args.topk} train IDs saved to {topk_path}")
 
 def main():
-    setup_logging()
-    args = build_parser().parse_args()
+    args = parse_args()
+    device = torch.device(f"cuda:{args.gpu}" if args.gpu >= 0 and torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
-    if not os.path.exists(args.ckpt_path):
-        raise FileNotFoundError(f"ckpt not found: {args.ckpt_path}")
+    # Load model and data
+    model, tokenizer = load_model_and_tokenizer(args, device)
+    model.eval()
+    train_loader, test_loader, test_dataset = build_data_loaders(args, tokenizer, device)
+    train_ids = get_train_ids(train_loader)
 
-    if args.experiment == "multimodal":
-        if not args.train_jsonl or not args.test_jsonl:
-            raise ValueError("multimodal requires --train_jsonl and --test_jsonl")
+    # Determine test IDs to process
+    test_ids = [args.test_id]
+    if args.all_test_ids:
+        test_ids = list(range(len(test_dataset)))
+        print(f"Will calculate IF for {len(test_ids)} test samples")
 
-    device = get_device()
-    logging.info(f"Device: {device}")
-    logging.info(f"Experiment: {args.experiment}")
-    logging.info(f"Checkpoint: {args.ckpt_path}")
+    # Calculate IF for each test sample
+    for test_id in tqdm(test_ids, desc="Processing test samples"):
+        influences, harmful, helpful, _ = calc_influence_single(
+            model=model,
+            train_loader=train_loader,
+            test_loader=test_loader,
+            test_id_num=test_id,
+            recursion_depth=args.recursion_depth,
+            r=args.r_averaging,
+            gpu=args.gpu,
+            damp=args.damp,
+            scale=args.scale,
+            loss_func=args.loss_func
+        )
+        # Save results
+        save_if_results(args, test_id, influences, train_ids)
 
-    if args.all_test_ids == 1:
-        run_all_tests(args, device)
-    else:
-        run_single_test(args, device)
-
+    print("IF calculation and saving completed!")
 
 if __name__ == "__main__":
     main()

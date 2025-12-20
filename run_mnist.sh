@@ -1,221 +1,130 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+set -e  # Exit on any error
 
-# ============================================================
-# run_mnist.sh  (MNIST full pipeline)
-#
-# 1) (optional) Train base logistic regression on MNIST(55k)
-# 2) (optional) Run IF:
-#      - single test_id  -> save if_scores_test_X.npy + topk_ids_test_X.txt
-#      - all tests       -> save per-test npy under ./outputs/mnist/if_all/
-# 3) (optional) Run LOO on Top-K train ids (resume jsonl)
-# 4) (optional) Visualize after LOO (hist + IF-vs-LOO scatter)
-# ============================================================
+# -------------------------- Configurable Parameters (Modify as Needed) --------------------------
+# Basic settings
+EXPERIMENT_DIR="./mnist_experiment"  # Root directory for all outputs
+GPU_ID=0                              # GPU id (set to -1 for CPU)
+TEST_ID=5                             # Target test sample ID for IF/LOO
+SEED=42                               # Random seed
 
-# -----------------------------
-# [A] Switches (0/1)
-# -----------------------------
-SKIP_TRAIN=0
-SKIP_IF=0
-SKIP_LOO=0
-SKIP_VIS=0
+# Data settings
+MNIST_ROOT="./mnist_data"             # MNIST data storage path
+TRAIN_LIMIT=55000                     # Limit training data size (set to -1 for full dataset)
+TEST_LIMIT=10000                      # Limit test data size (set to -1 for full dataset)
 
-RUN_ALL_TEST_IF=0      # 1 = compute IF for all test ids (save per-test npy)
-TEST_ID=0              # used when RUN_ALL_TEST_IF=0
+# Base Model Training settings
+BASE_OPTIMIZER="lbfgs"                # Optimizer for base model training (lbfgs/sgd/adamw)
+BASE_EPOCHS=1                         # Epochs for base model training
+BASE_BATCH_SIZE=55000                 # Batch size for base model training, LBFGS uses full batch
+BASE_LR=0.01                          # Learning rate for base model training
 
-# -----------------------------
-# [B] Paths (hard-coded)
-# -----------------------------
-MODELS_DIR="./models"
-OUT_DIR="./outputs/mnist"
-mkdir -p "${MODELS_DIR}" "${OUT_DIR}"
+# IF settings
+RECURSION_DEPTH=5500                  # Recursion depth for s_test calculation
+R_AVERAGING=10                        # Number of averaging iterations for IF
+DAMP=0.01                           # Dampening factor for IF
+SCALE=60.0                            # Scaling factor for IF
+TOPK=200                               # Top-K influential training samples to select
 
-BASE_CKPT="${MODELS_DIR}/mnist_base.pth"
+# LOO settings
+LOO_OPTIMIZER="lbfgs"                 # Optimizer for LOO retraining (lbfgs/sgd/adamw)
+LOO_LR=1.0                            # Learning rate for LOO retraining
+LOO_EPOCHS=1                          # Epochs for LOO retraining
+LOO_BATCH_SIZE=55000                  # Batch size for LOO retraining, LBFGS uses full batch
 
-# single-test outputs
-IF_SCORES_NPY="${OUT_DIR}/if_scores_test_${TEST_ID}.npy"
-TOPK_IDS_TXT="${OUT_DIR}/topk_ids_test_${TEST_ID}.txt"
-LOO_JSONL="${OUT_DIR}/loo_losses_test_${TEST_ID}.jsonl"
+# Visualization settings
+TOPN_DIST=200                          # Top N helpful/harmful samples for distribution plot
+TOPK_CORR=200                          # Top K samples for IF-LOO correlation plot
+MODEL_TYPE="MNIST_IF"                 # Model type label for visualization
 
-# all-tests IF outputs (each test -> one npy)
-IF_ALL_DIR="${OUT_DIR}/if_all"   # will contain if_scores_test_{tid}.npy + index.jsonl
+# -------------------------- Directory Setup --------------------------
+IF_SAVE_DIR="${EXPERIMENT_DIR}/if_results"
+LOO_JSONL_PATH="${EXPERIMENT_DIR}/loo_results.jsonl"
+VIS_SAVE_DIR="${EXPERIMENT_DIR}/visualizations"
+BASE_MODEL_DIR="${EXPERIMENT_DIR}/base_model"
 
-# -----------------------------
-# [C] MNIST dataset config
-# -----------------------------
-MNIST_ROOT="./mnist"
-MNIST_TRAIN_LIMIT=55000      # paper uses 55,000
-MNIST_TEST_LIMIT=10000        
+# Create directories
+mkdir -p "${EXPERIMENT_DIR}"
+mkdir -p "${IF_SAVE_DIR}"
+mkdir -p "${VIS_SAVE_DIR}"
+mkdir -p "${BASE_MODEL_DIR}"
 
-# -----------------------------
-# [D] Base training (LogReg) params (paper-aligned)
-# -----------------------------
-MNIST_OPT="lbfgs"            # paper: L-BFGS
-MNIST_L2=0.01                # paper: L2 regularization 0.01
-BASE_EPOCHS=1                # for LBFGS, think "fit to convergence" in one run
-BASE_LR=1.0                  # LBFGS step size (often 1.0); your train_base.py can ignore if not used
-WEIGHT_DECAY=0.0             # keep 0 if you already add L2 via loss (l2_reg). avoid double-counting.
+echo "======================================"
+echo "MNIST Experiment Setup Completed"
+echo "Experiment Dir: ${EXPERIMENT_DIR}"
+echo "GPU ID: ${GPU_ID}"
+echo "Test Sample ID: ${TEST_ID}"
+echo "======================================"
 
-# Batch size:
-# - LBFGS is typically full-batch; for MNIST 55k it's reasonable on CPU.
-# - If your implementation uses full-batch closure, set BATCH_SIZE=55000.
-BATCH_SIZE=55000
-NUM_WORKERS=2
-
-# -----------------------------
-# [E] IF params (stochastic approx, Figure 2 middle)
-# -----------------------------
-RECURSION_DEPTH=1000
-DAMP=0.01
-SCALE=25.0
-
-# -----------------------------
-# [F] LOO params
-# -----------------------------
-TOPK_LOO=500                 # paper middle: 500 most influential by |IF|
-LOO_EPOCHS=1                 # logistic regression retrain; keep small for speed (increase if needed)
-LOO_LR=1.0                   # if LOO uses LBFGS, LR is step size
-# ============================================================
-
-echo "============================================================"
-echo "[run_mnist.sh] OUT_DIR=${OUT_DIR}"
-echo "[run_mnist.sh] BASE_CKPT=${BASE_CKPT}"
-echo "[run_mnist.sh] SKIP_TRAIN=${SKIP_TRAIN} SKIP_IF=${SKIP_IF} SKIP_LOO=${SKIP_LOO} SKIP_VIS=${SKIP_VIS}"
-echo "[run_mnist.sh] RUN_ALL_TEST_IF=${RUN_ALL_TEST_IF} TEST_ID=${TEST_ID}"
-echo "[run_mnist.sh] MNIST_TRAIN_LIMIT=${MNIST_TRAIN_LIMIT} MNIST_TEST_LIMIT=${MNIST_TEST_LIMIT}"
-echo "============================================================"
-echo
-
-# ============================================================
-# 1) Train base model (or load)
-# ============================================================
-if [[ "${SKIP_TRAIN}" -eq 1 ]]; then
-  [[ -f "${BASE_CKPT}" ]] || { echo "[ERROR] Missing ckpt: ${BASE_CKPT}"; exit 1; }
-  echo "[1/4] Skip training. Using: ${BASE_CKPT}"
-else
-  echo "[1/4] Train base logistic regression -> ${BASE_CKPT}"
-  python3 -u scripts/train_base.py \
-    --experiment mnist \
+# -------------------------- Step 1: Train Base Model (Mandatory, for run_if.py to load weights) --------------------------
+echo -e "\n[Step 1/4] Training MNIST Base Model"
+python ./scripts/train_base.py \
     --mnist_root "${MNIST_ROOT}" \
-    --mnist_train_limit "${MNIST_TRAIN_LIMIT}" \
-    --mnist_test_limit "${MNIST_TEST_LIMIT}" \
-    --optimizer "${MNIST_OPT}" \
-    --l2_reg "${MNIST_L2}" \
+    --train_limit "${TRAIN_LIMIT}" \
     --epochs "${BASE_EPOCHS}" \
+    --batch_size "${BASE_BATCH_SIZE}" \
     --lr "${BASE_LR}" \
-    --weight_decay "${WEIGHT_DECAY}" \
-    --batch_size "${BATCH_SIZE}" \
-    --num_workers "${NUM_WORKERS}" \
-    --save_path "${BASE_CKPT}"
-fi
-echo
+    --weight_decay 0.01 \
+    --lbfgs_tolerance_grad 1e-8 \
+    --lbfgs_tolerance_change 1e-10 \
+    --gpu "${GPU_ID}" \
+    --save_dir "${BASE_MODEL_DIR}"
 
-# ============================================================
-# 2) Run IF
-# ============================================================
-if [[ "${SKIP_IF}" -eq 1 ]]; then
-  echo "[2/4] Skip IF."
-else
-  echo "[2/4] Run IF (stochastic approx)."
+# -------------------------- Step 2: Calculate Influence Functions (IF) --------------------------
+echo -e "\n[Step 2/4] Calculating Influence Functions for Test ID ${TEST_ID}"
+python ./scripts/run_if.py \
+    --experiment mnist \
+    --ckpt_path "${BASE_MODEL_DIR}/base_model.pth" \
+    --mnist_root "${MNIST_ROOT}" \
+    --mnist_train_limit "${TRAIN_LIMIT}" \
+    --mnist_test_limit "${TEST_LIMIT}" \
+    --test_id "${TEST_ID}" \
+    --recursion_depth "${RECURSION_DEPTH}" \
+    --r_averaging "${R_AVERAGING}" \
+    --damp "${DAMP}" \
+    --scale "${SCALE}" \
+    --topk "${TOPK}" \
+    --save_dir "${IF_SAVE_DIR}" \
+    --batch_size 32 \
+    --num_workers 2 \
+    --gpu "${GPU_ID}"
 
-  if [[ "${RUN_ALL_TEST_IF}" -eq 1 ]]; then
-    echo "      Mode: ALL test ids -> per-test npy under ${IF_ALL_DIR}"
-    python3 -u scripts/run_if.py \
-      --experiment mnist \
-      --mnist_root "${MNIST_ROOT}" \
-      --mnist_train_limit "${MNIST_TRAIN_LIMIT}" \
-      --mnist_test_limit "${MNIST_TEST_LIMIT}" \
-      --ckpt_path "${BASE_CKPT}" \
-      --all_test_ids 1 \
-      --save_all_dir "${IF_ALL_DIR}" \
-      --all_test_limit "${MNIST_TEST_LIMIT}" \
-      --resume_all_test 1 \
-      --recursion_depth "${RECURSION_DEPTH}" \
-      --damp "${DAMP}" \
-      --scale "${SCALE}" \
-      --batch_size 1 \
-      --num_workers "${NUM_WORKERS}"
-  else
-    echo "      Mode: single test_id=${TEST_ID}"
-    python3 -u scripts/run_if.py \
-      --experiment mnist \
-      --mnist_root "${MNIST_ROOT}" \
-      --mnist_train_limit "${MNIST_TRAIN_LIMIT}" \
-      --mnist_test_limit "${MNIST_TEST_LIMIT}" \
-      --ckpt_path "${BASE_CKPT}" \
-      --test_id "${TEST_ID}" \
-      --recursion_depth "${RECURSION_DEPTH}" \
-      --damp "${DAMP}" \
-      --scale "${SCALE}" \
-      --batch_size 1 \
-      --num_workers "${NUM_WORKERS}" \
-      --save_scores_npy "${IF_SCORES_NPY}" \
-      --save_topk_ids_txt "${TOPK_IDS_TXT}" \
-      --topk "${TOPK_LOO}"
-  fi
-fi
-echo
+# -------------------------- Step 3: Leave-One-Out (LOO) Retraining --------------------------
+echo -e "\n[Step 3/4] Starting LOO Retraining for Top-${TOPK} Samples"
+python ./scripts/run_loo.py \
+    --experiment mnist \
+    --topk_ids_txt "${IF_SAVE_DIR}/topk_ids_test_${TEST_ID}.txt" \
+    --test_id "${TEST_ID}" \
+    --mnist_root "${MNIST_ROOT}" \
+    --mnist_train_limit "${TRAIN_LIMIT}" \
+    --mnist_test_limit "${TEST_LIMIT}" \
+    --optimizer "${LOO_OPTIMIZER}" \
+    --lr "${LOO_LR}" \
+    --epochs "${LOO_EPOCHS}" \
+    --lbfgs_tolerance_grad 1e-8 \
+    --lbfgs_tolerance_change 1e-10 \
+    --batch_size "${LOO_BATCH_SIZE}" \
+    --num_workers 2 \
+    --save_jsonl "${LOO_JSONL_PATH}" \
+    --gpu "${GPU_ID}"
 
-# ============================================================
-# 3) Run LOO (single-test only)
-# ============================================================
-if [[ "${SKIP_LOO}" -eq 1 ]]; then
-  echo "[3/4] Skip LOO."
-else
-  if [[ "${RUN_ALL_TEST_IF}" -eq 1 ]]; then
-    echo "[3/4] RUN_ALL_TEST_IF=1 -> LOO skipped (too expensive)."
-  else
-    [[ -f "${TOPK_IDS_TXT}" ]] || { echo "[ERROR] Missing topk ids: ${TOPK_IDS_TXT}"; exit 1; }
-    echo "[3/4] Run LOO on Top-${TOPK_LOO} ids -> append ${LOO_JSONL} (resume)"
+# -------------------------- Step 4: Visualize Results --------------------------
+echo -e "\n[Step 4/4] Generating Visualizations"
+python ./scripts/vis.py \
+    --if_save_dir "${IF_SAVE_DIR}" \
+    --loo_jsonl "${LOO_JSONL_PATH}" \
+    --vis_save_dir "${VIS_SAVE_DIR}" \
+    --test_id "${TEST_ID}" \
+    --top_n_dist "${TOPN_DIST}" \
+    --top_k_corr "${TOPK_CORR}" \
+    --model_type "${MODEL_TYPE}"
 
-    python3 -u scripts/run_loo.py \
-      --experiment mnist \
-      --mnist_root "${MNIST_ROOT}" \
-      --mnist_train_limit "${MNIST_TRAIN_LIMIT}" \
-      --mnist_test_limit "${MNIST_TEST_LIMIT}" \
-      --optimizer "${MNIST_OPT}" \
-      --l2_reg "${MNIST_L2}" \
-      --topk_ids_txt "${TOPK_IDS_TXT}" \
-      --test_id "${TEST_ID}" \
-      --epochs "${LOO_EPOCHS}" \
-      --lr "${LOO_LR}" \
-      --weight_decay "${WEIGHT_DECAY}" \
-      --batch_size "${BATCH_SIZE}" \
-      --num_workers "${NUM_WORKERS}" \
-      --save_jsonl "${LOO_JSONL}"
-  fi
-fi
-echo
-
-# ============================================================
-# 4) Visualization (after LOO)
-# ============================================================
-if [[ "${SKIP_VIS}" -eq 1 ]]; then
-  echo "[4/4] Skip visualization."
-else
-  if [[ "${RUN_ALL_TEST_IF}" -eq 1 ]]; then
-    echo "[4/4] RUN_ALL_TEST_IF=1 -> visualization skipped (no LOO)."
-  else
-    echo "[4/4] Visualization -> ${OUT_DIR}"
-    python3 -u scripts/run_plot.py \
-      --if_scores_npy "${IF_SCORES_NPY}" \
-      --topk_ids_txt "${TOPK_IDS_TXT}" \
-      --loo_jsonl "${LOO_JSONL}" \
-      --out_dir "${OUT_DIR}" \
-      --test_id "${TEST_ID}" \
-      --top_k_plot "${TOPK_LOO}" \
-      --model_type "MNIST Logistic Regression (approx)"
-  fi
-fi
-
-echo
-echo "==================== DONE (MNIST) ===================="
-echo "Base ckpt: ${BASE_CKPT}"
-if [[ "${RUN_ALL_TEST_IF}" -eq 1 ]]; then
-  echo "IF all-tests dir: ${IF_ALL_DIR}"
-else
-  echo "IF scores:   ${IF_SCORES_NPY}"
-  echo "TopK ids:    ${TOPK_IDS_TXT}"
-  echo "LOO jsonl:   ${LOO_JSONL}"
-fi
-echo "======================================================"
+# -------------------------- Completion --------------------------
+echo -e "\n======================================"
+echo "MNIST Experiment Completed Successfully"
+echo "Results Summary:"
+echo "  - Base Model: ${BASE_MODEL_DIR}/base_model.pth"
+echo "  - IF Results: ${IF_SAVE_DIR}"
+echo "  - LOO Results: ${LOO_JSONL_PATH}"
+echo "  - Visualizations: ${VIS_SAVE_DIR}"
+echo "======================================"

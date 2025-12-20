@@ -1,117 +1,139 @@
-import os
 import argparse
-import logging
 import torch
+import torch.optim as optim
+import numpy as np
+from pathlib import Path
+from model import build_model
+from data_utils_mnist import build_dataloader_mnist
 
-from run_loo import (
-    train_mnist_lr,
-    train_multimodal,
-    build_mnist_datasets,
-    build_multimodal_datasets,
-    get_device,
-    setup_logging,
-)
-
-
-def train_mnist(args, device: torch.device):
-    train_ds, _ = build_mnist_datasets(args, device)
-
-    model = train_mnist_lr(
-        train_subset=train_ds,
-        device=device,
-        optimizer_name=args.optimizer,
-        lr=float(args.lr),
-        weight_decay=float(args.weight_decay),
-        l2_reg=float(args.l2_reg),
-        epochs=int(args.epochs),
-        batch_size=int(args.batch_size),
-        num_workers=int(args.num_workers),
-    )
-    return model
-
-
-def train_multimodal_exp(args, device: torch.device):
-    if not args.train_jsonl:
-        raise ValueError("--train_jsonl is required for experiment=multimodal")
-
-    if not args.test_jsonl:
-        raise ValueError("--test_jsonl is required for experiment=multimodal (dataset builder needs it)")
-
-    train_ds, _ = build_multimodal_datasets(args, device)
-
-    model = train_multimodal(
-        train_subset=train_ds,
-        device=device,
-        image_root=args.image_root,
-        image_size=int(args.image_size),
-        max_seq_len=int(args.max_seq_len),
-        embed_dim=int(args.embed_dim),
-        num_heads=int(args.num_heads),
-        num_layers=int(args.num_layers),
-        num_image_tokens_per_patch=int(args.num_image_tokens_per_patch),
-        epochs=int(args.epochs),
-        lr=float(args.lr),
-        weight_decay=float(args.weight_decay),
-        batch_size=int(args.batch_size),
-        num_workers=int(args.num_workers),
-    )
-    return model
-
-
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser("Train base model and save checkpoint")
-
-    p.add_argument("--experiment", choices=["mnist", "multimodal"], required=True)
-    p.add_argument("--save_path", type=str, required=True)
-
-    p.add_argument("--epochs", type=int, default=1)
-    p.add_argument("--lr", type=float, default=1.0)
-    p.add_argument("--weight_decay", type=float, default=0.0)
-
-    p.add_argument("--batch_size", type=int, default=32)
-    p.add_argument("--num_workers", type=int, default=2)
-
-    # MNIST
-    p.add_argument("--mnist_root", type=str, default="./mnist")
-    p.add_argument("--mnist_train_limit", type=int, default=55000)
-    p.add_argument("--mnist_test_limit", type=int, default=10000)  # dataset builder needs it
-    p.add_argument("--optimizer", choices=["lbfgs", "adamw", "sgd"], default="lbfgs")
-    p.add_argument("--l2_reg", type=float, default=0.01)
-
-    # Multimodal
-    p.add_argument("--train_jsonl", type=str, default=None)
-    p.add_argument("--test_jsonl", type=str, default=None)
-    p.add_argument("--image_root", type=str, default="./")
-
-    p.add_argument("--image_size", type=int, default=224)
-    p.add_argument("--embed_dim", type=int, default=384)
-    p.add_argument("--num_heads", type=int, default=6)
-    p.add_argument("--num_layers", type=int, default=4)
-    p.add_argument("--num_image_tokens_per_patch", type=int, default=12)
-    p.add_argument("--max_seq_len", type=int, default=768)
-
-    return p
-
+def parse_args():
+    parser = argparse.ArgumentParser("Train MNIST Base Model for Influence Function Calculation")
+    # Data settings
+    parser.add_argument("--mnist_root", type=str, default="./mnist_data")
+    parser.add_argument("--train_limit", type=int, default=55000)
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--batch_size", type=int, default=100) 
+    parser.add_argument("--lr", type=float, default=1.0) 
+    parser.add_argument("--weight_decay", type=float, default=0.01)
+    parser.add_argument("--optimizer", type=str, default="lbfgs", choices=["lbfgs", "sgd", "adamw"])
+    parser.add_argument("--lbfgs_max_iter", type=int, default=100) 
+    parser.add_argument("--lbfgs_tolerance_grad", type=float, default=1e-8) 
+    parser.add_argument("--lbfgs_tolerance_change", type=float, default=1e-10)  
+    # Device & save
+    parser.add_argument("--gpu", type=int, default=0)
+    parser.add_argument("--save_dir", type=str, required=True)
+    return parser.parse_args()
 
 def main():
-    setup_logging()
-    args = build_parser().parse_args()
+    args = parse_args()
+    device = torch.device(f"cuda:{args.gpu}" if args.gpu >=0 and torch.cuda.is_available() else "cpu")
+    print(f"Training on device: {device}")
 
-    os.makedirs(os.path.dirname(args.save_path) or ".", exist_ok=True)
-    device = get_device()
+    # 1. Build model
+    model = build_model(
+        experiment="mnist",
+        weight_decay=args.weight_decay,
+        is_multi=True
+    ).to(device)
 
-    logging.info(f"Device: {device}")
-    logging.info(f"Experiment: {args.experiment}")
-    logging.info(f"Saving to: {args.save_path}")
+    # 2. Build dataset & dataloader
+    _, train_dataset = build_dataloader_mnist(
+        data_root=args.mnist_root,
+        train=True,
+        limit_size=args.train_limit,
+        return_dataset=True
+    )
+    train_sample_num = len(train_dataset)
+    print(f"Training sample number: {train_sample_num}")
+    C = 1.0 / (train_sample_num * args.weight_decay)
 
-    if args.experiment == "mnist":
-        model = train_mnist(args, device)
+    if args.optimizer == "lbfgs":
+        batch_size = train_sample_num  # LBFGS uses full batch
+        shuffle = False
     else:
-        model = train_multimodal_exp(args, device)
+        batch_size = args.batch_size
+        shuffle = True
 
-    torch.save(model.state_dict(), args.save_path)
-    logging.info(f"Saved checkpoint: {args.save_path}")
+    train_loader, _ = build_dataloader_mnist(
+        data_root=args.mnist_root,
+        train=True,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=2,
+        limit_size=args.train_limit
+    )
 
+    # 3. Build optimizer
+    if args.optimizer == "lbfgs":
+        optimizer = optim.LBFGS(
+            model.parameters(),
+            lr=args.lr,
+            max_iter=args.lbfgs_max_iter,
+            tolerance_grad=args.lbfgs_tolerance_grad,
+            tolerance_change=args.lbfgs_tolerance_change,
+            history_size=20,
+            line_search_fn="strong_wolfe" 
+        )
+    elif args.optimizer == "sgd":
+        optimizer = optim.SGD(
+            model.parameters(),
+            lr=args.lr,
+            momentum=0.9,
+            weight_decay=0.0
+        )
+    else:  # adamw
+        optimizer = optim.AdamW(
+            model.parameters(),
+            lr=args.lr,
+            weight_decay=0.0
+        )
+
+    # 4. Training loop
+    model.train()
+    for epoch in range(args.epochs):
+        total_loss = 0.0
+        if args.optimizer == "lbfgs":
+            for batch in train_loader:
+                x, y, _ = batch
+                x, y = x.to(device), y.to(device)
+
+                def closure():
+                    optimizer.zero_grad()
+                    logits = model(x, labels=y)
+                    loss = model.loss(logits, y)
+                    loss.backward()
+                    return loss
+
+                loss = optimizer.step(closure)
+                total_loss = loss.item() * x.size(0)
+        else:
+            for batch in train_loader:
+                x, y, _ = batch
+                x, y = x.to(device), y.to(device)
+
+                optimizer.zero_grad()
+                logits = model(x, labels=y)
+                loss = model.loss(logits, y)
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item() * x.size(0)
+        
+        avg_loss = total_loss / train_sample_num
+        print(f"Epoch [{epoch+1}/{args.epochs}], Avg Loss: {avg_loss:.6f}")
+
+    # 5. Save model
+    save_dir = Path(args.save_dir)
+    save_dir.mkdir(exist_ok=True, parents=True)
+    ckpt_path = save_dir / "base_model.pth"
+    torch.save({
+        "model_state_dict": model.state_dict(),
+        "weight_decay": args.weight_decay,
+        "train_sample_num": train_sample_num,
+        "C": C,
+        "optimizer": args.optimizer
+    }, ckpt_path)
+    print(f"Base model saved to: {ckpt_path}")
 
 if __name__ == "__main__":
     main()
