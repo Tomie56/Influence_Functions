@@ -140,9 +140,12 @@ Consistent with the observations from traditional IF experiments, the helpful an
 │       ├── loo_losses_test_0.jsonl
 │       └── figs/
 ├── scripts/
+│   ├── data_utils.py                
+│   ├── data_utils_mnist.py          
+│   ├── one_step_train.py            # OST loss
 │   ├── train_base.py                # Train base model and save checkpoint
 │   ├── run_if.py                    # Compute IF (supports single/all test samples)
-│   ├── run_loo.py                    # LOO retraining (supports resuming from breakpoints)
+│   ├── run_loo.py                   # LOO retraining (supports resuming from breakpoints)
 │   ├── vis.py                       # Visualization tool (IF distribution + IF-LOO correlation)
 │   ├── run_mnist.sh                 # One-click execution script for MNIST full pipeline
 │   └── run_multimodal.sh            # One-click execution script for multimodal full pipeline
@@ -189,21 +192,20 @@ The data loader yields dict batches including:
 
     - One integer training ID per line, selected by `abs(score)` top-K
 
-### Influence Functions (All Tests)
+### One-Step-Train Loss
 
-- `outputs/<exp>/all_tests/if_scores_test_<test_id>.npy` (or `.npz` depending on configuration)
+- `outputs/<exp>/one_step_train_influences_test_<test_id>.npy`
 
-- `outputs/<exp>/all_tests/index.jsonl`
+    - `scores`: float32 array of influence scores aligned with `train_ids`
 
-    - One line per test sample: `{"test_id": ..., "path": ...}`
-
+    - `train_ids`: int64 array of the corresponding training sample IDs
+    
 ### Leave-One-Out
 
 - `outputs/<exp>/loo_losses_test_<test_id>.jsonl`
 
     - One JSON object per line:
                 
-
         - Base run (no training sample removed): `{"id": -1, "loss": <float>}`
 
         - LOO run (one training sample removed): `{"id": <train_id>, "loss": <float>}`
