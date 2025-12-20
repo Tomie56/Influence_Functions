@@ -9,7 +9,7 @@ from data_utils import build_dataloader
 from influence_function import calc_influence_single
 
 def parse_args():
-    parser = argparse.ArgumentParser("Calculate Influence Functions (IF) for single/all test samples")
+    parser = argparse.ArgumentParser("Calculate Influence Functions (IF) for single test samples")
     # Experiment config
     parser.add_argument("--experiment", choices=["mnist", "multimodal"], required=True)
     parser.add_argument("--ckpt_path", type=str, required=True)
@@ -98,7 +98,6 @@ def load_model_and_tokenizer(args, device):
 
 def build_data_loaders(args, tokenizer, device):
     """Build train and test dataloaders"""
-    # Build train and test dataloaders
     if args.experiment == "mnist":
         train_loader, _ = build_dataloader_mnist(
             data_root=args.data_root,

@@ -2,3 +2,5 @@
 /models
 /mnist
 /__pycache__
+/base_model
+/multimodal_experiment

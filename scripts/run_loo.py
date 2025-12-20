@@ -206,7 +206,7 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=1, help="Training epochs")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size (ignored for LBFGS)")
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
-    # LBFGS specific parameters (PyTorch compatible)
+    # LBFGS specific parameters
     parser.add_argument("--lbfgs_max_iter", type=int, default=20, help="Max iterations for LBFGS optimizer")
     parser.add_argument("--lbfgs_tolerance_grad", type=float, default=1e-8, help="Gradient tolerance for LBFGS convergence")
     parser.add_argument("--lbfgs_tolerance_change", type=float, default=1e-10, help="Parameter change tolerance for LBFGS convergence")

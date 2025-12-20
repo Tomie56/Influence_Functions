@@ -140,8 +140,8 @@ def build_dataloader(
         dataset = Subset(dataset, list(range(limit_size)))
         print(f"Dataset size limited to: {limit_size} samples")
 
-    if return_dataset:
-        return None, dataset
+    # if return_dataset:
+    #     return None, dataset
 
     # Custom collate function for batch assembly
     def collate_fn(batch):
@@ -162,4 +162,7 @@ def build_dataloader(
         pin_memory=True, 
         drop_last=False 
     )
+    if return_dataset:
+        return dataloader, dataset
+    
     return dataloader, None

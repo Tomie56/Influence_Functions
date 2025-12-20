@@ -72,27 +72,27 @@ echo "======================================"
 
 # -------------------------- Step 1: Train Multimodal Base Model --------------------------
 echo -e "\n[Step 1/4] Training Multimodal-Transformer Base Model"
-python ./scripts/train_base.py \
-    --experiment multimodal \
-    --train_jsonl "${TRAIN_JSONL}" \
-    --test_jsonl "${TEST_JSONL}" \
-    --image_root "${DATA_ROOT}" \
-    --data_root "${DATA_ROOT}" \
-    --train_limit "${TRAIN_LIMIT}" \
-    --embed_dim "${EMBED_DIM}" \
-    --num_heads "${NUM_HEADS}" \
-    --num_layers "${NUM_LAYERS}" \
-    --max_seq_len "${MAX_SEQ_LEN}" \
-    --vocab_size "${VOCAB_SIZE}" \
-    --optimizer "${BASE_OPTIMIZER}" \
-    --epochs "${BASE_EPOCHS}" \
-    --batch_size "${BASE_BATCH_SIZE}" \
-    --lr "${BASE_LR}" \
-    --weight_decay "${BASE_WEIGHT_DECAY}" \
-    --lbfgs_tolerance_grad 1e-8 \
-    --lbfgs_tolerance_change 1e-10 \
-    --gpu "${GPU_ID}" \
-    --save_dir "${BASE_MODEL_DIR}"
+# python ./scripts/train_base.py \
+#     --experiment multimodal \
+#     --train_jsonl "${TRAIN_JSONL}" \
+#     --test_jsonl "${TEST_JSONL}" \
+#     --image_root "${DATA_ROOT}" \
+#     --data_root "${DATA_ROOT}" \
+#     --train_limit "${TRAIN_LIMIT}" \
+#     --embed_dim "${EMBED_DIM}" \
+#     --num_heads "${NUM_HEADS}" \
+#     --num_layers "${NUM_LAYERS}" \
+#     --max_seq_len "${MAX_SEQ_LEN}" \
+#     --vocab_size "${VOCAB_SIZE}" \
+#     --optimizer "${BASE_OPTIMIZER}" \
+#     --epochs "${BASE_EPOCHS}" \
+#     --batch_size "${BASE_BATCH_SIZE}" \
+#     --lr "${BASE_LR}" \
+#     --weight_decay "${BASE_WEIGHT_DECAY}" \
+#     --lbfgs_tolerance_grad 1e-8 \
+#     --lbfgs_tolerance_change 1e-10 \
+#     --gpu "${GPU_ID}" \
+#     --save_dir "${BASE_MODEL_DIR}"
 
 # -------------------------- Step 2: Calculate Influence Functions (IF) --------------------------
 echo -e "\n[Step 2/4] Calculating Influence Functions for Test ID ${TEST_ID}"
