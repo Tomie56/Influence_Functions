@@ -71,6 +71,13 @@ In summary, influence scores computed via the IF implementation yield highly int
 - **Harmful Training Samples**:
 ![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/harmful_test_5.png)
 
+#### Test id 10
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/test_10.png)
+- **Helpful Training Samples**:
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/helpful_test_10.png)
+- **Harmful Training Samples**:
+![image](https://github.com/Tomie56/Influence_Functions/blob/master/figures/harmful_test_10.png)
+
 ## One-step-train LOSS (OST) vs. Influence Functions (IF) Experiments
 Traditional Influence Functions (IF) are based on Leave-One-Out (LOO) cross-validation, which approximates model parameter changes after removing each training sample to evaluate its impact on target test sample predictions. The LOO-based approach is theoretically most accurate for capturing true sample influence, as it fully considers each sample’s holistic role in training.
 
